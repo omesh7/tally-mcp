@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/omesh7/tallymcp/internal/tally"
-	tallyxml "github.com/omesh7/tallymcp/internal/xml"
+	"github.com/omesh7/tally-mcp/internal/tally"
+	tallyxml "github.com/omesh7/tally-mcp/internal/xml"
 )
 
 // tallyClient is the shared Tally HTTP client used by all tool handlers.

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-06-03
 
 ### Added
-* **Go Module Rewrite**: Ported entire codebase from Python prototype to a high-performance modular Go module (`github.com/omesh7/tallymcp`).
+* **Go Module Rewrite**: Ported entire codebase from Python prototype to a high-performance modular Go module (`github.com/omesh7/tally-mcp`).
 * **Official MCP SDK Integration**: Integrated with the official Model Context Protocol Go SDK for reliable stdio JSON-RPC 2.0 communication.
 * **Fluent XML & TDL Builder**: Introduced a composable builder (`internal/xml/`) replacing inline string manipulation.
 * **Safe Request Serialization**: Added a global sync Mutex inside the HTTP transport wrapper to prevent Tally Prime single-threaded port 9000 crashes.

@@ -2,7 +2,7 @@ package tools
 
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/omesh7/tallymcp/internal/tally"
+	"github.com/omesh7/tally-mcp/internal/tally"
 )
 
 // RegisterAll registers all TallyMCP tools with the MCP server.

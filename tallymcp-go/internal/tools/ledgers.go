@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	tallyxml "github.com/omesh7/tallymcp/internal/xml"
+	tallyxml "github.com/omesh7/tally-mcp/internal/xml"
 )
 
 // ──────────────────────────────────────────────────────────────────────────────

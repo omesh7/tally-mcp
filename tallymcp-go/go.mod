@@ -1,4 +1,4 @@
-module github.com/omesh7/tallymcp
+module github.com/omesh7/tally-mcp
 
 go 1.26.4
 

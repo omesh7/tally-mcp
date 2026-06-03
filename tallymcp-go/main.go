@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/omesh7/tallymcp/internal/config"
-	"github.com/omesh7/tallymcp/internal/tally"
-	"github.com/omesh7/tallymcp/internal/tools"
+	"github.com/omesh7/tally-mcp/internal/config"
+	"github.com/omesh7/tally-mcp/internal/tally"
+	"github.com/omesh7/tally-mcp/internal/tools"
 )
 
 func main() {
