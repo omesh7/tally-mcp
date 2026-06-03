@@ -77,12 +77,14 @@ func RegisterAll(server *mcp.Server, client *tally.Client) {
 		Description: "Fetches a structured Balance Sheet showing Capital & Liabilities vs. Assets, verifying if accounts balance successfully.",
 	}, GetBalanceSheet)
 
-	// ── Write Tools ─────────────────────────────────────────────────────────
-
+	// ── Write Tools (DISABLED) ──────────────────────────────────────────────
+	// Write operations are currently disabled for safety.
+	/*
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add_quick_journal_voucher",
 		Description: "Safely records a balanced Journal voucher between two ledgers on an Educational-safe date (1st or 2nd of April 2026).",
 	}, AddQuickJournalVoucher)
+	*/
 
 	// ── Analytics Tools ─────────────────────────────────────────────────────
 

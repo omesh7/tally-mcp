@@ -87,7 +87,7 @@ TallyMCP exposes **13 core tools** for AI model consumption:
 | 4 | `list_stock_items` | Read | Lists inventory stock items with quantities, rates, and values. Supports prefix filters. | `prefix` (optional) |
 | 5 | `list_ledgers` | Read | Lists all ledger accounts, with optional parent group filtering (e.g. Bank Accounts). | `group` (optional) |
 | 6 | `get_day_book` | Read | Retrieves a list of all recorded transactions (vouchers) in Tally with their amounts and types. | `date` (optional) |
-| 7 | `add_quick_journal_voucher` | Write | Records a balanced Journal voucher between two ledgers. (EDU Mode safe dates) | `debit_ledger`, `credit_ledger`, `amount`, `narration`, `day` |
+| 7 | `add_quick_journal_voucher` | Write | **[DISABLED / EXPERIMENTAL]** Records a balanced Journal voucher between two ledgers. (EDU Mode safe dates) | `debit_ledger`, `credit_ledger`, `amount`, `narration`, `day` |
 | 8 | `get_sales_analytics` | Read | Generates month-on-month sales aggregates and growth percentages for a sales ledger. | `sales_ledger` (optional) |
 | 9 | `get_expense_analytics` | Read | Compiles multi-period profitability and net margin trends using custom expenses/sales. | `sales_ledger` (optional), `expense_ledgers` (optional) |
 | 10 | `get_outstanding_receivables` | Read | Lists all outstanding customer receivables (Sundry Debtors) sorted descending by balance. | None |
