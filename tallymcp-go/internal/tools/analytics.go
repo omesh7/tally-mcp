@@ -144,10 +144,15 @@ type SalesAnalyticsInput struct {
 // GetSalesAnalytics queries Tally for all Sales vouchers, aggregates monthly sales,
 // and calculates month-on-month growth.
 func GetSalesAnalytics(ctx context.Context, req *mcp.CallToolRequest, input SalesAnalyticsInput) (*mcp.CallToolResult, any, error) {
+	var salesLedgerMissing bool
 	if strings.TrimSpace(input.SalesLedger) != "" {
 		resolved, err := resolveLedgerName(ctx, input.SalesLedger)
 		if err == nil {
 			input.SalesLedger = resolved
+		}
+		exists, _ := ledgerExists(ctx, input.SalesLedger)
+		if !exists {
+			salesLedgerMissing = true
 		}
 	}
 	salesLedgers := []string{input.SalesLedger}
@@ -221,6 +226,9 @@ func GetSalesAnalytics(ctx context.Context, req *mcp.CallToolRequest, input Sale
 	if input.StartDate != "" || input.EndDate != "" {
 		sb.WriteString(fmt.Sprintf("*Date range: %s to %s*\n\n", input.StartDate, input.EndDate))
 	}
+	if salesLedgerMissing {
+		sb.WriteString(fmt.Sprintf("> [!WARNING]\n> Sales ledger '%s' was not found in Tally's chart of accounts.\n\n", input.SalesLedger))
+	}
 	if txCount == 0 {
 		sb.WriteString("> [!WARNING]\n> No matching sales vouchers were found. Check the ledger name and date range before using this as a zero-sales result.\n\n")
 	}
@@ -266,10 +274,15 @@ type ExpenseAnalyticsInput struct {
 // GetExpenseAnalytics fetches multi-period expenses and sales to calculate
 // net profit margins and profitability trends.
 func GetExpenseAnalytics(ctx context.Context, req *mcp.CallToolRequest, input ExpenseAnalyticsInput) (*mcp.CallToolResult, any, error) {
+	var salesLedgerMissing bool
 	if strings.TrimSpace(input.SalesLedger) != "" {
 		resolved, err := resolveLedgerName(ctx, input.SalesLedger)
 		if err == nil {
 			input.SalesLedger = resolved
+		}
+		exists, _ := ledgerExists(ctx, input.SalesLedger)
+		if !exists {
+			salesLedgerMissing = true
 		}
 	}
 	salesLedgers := []string{input.SalesLedger}
@@ -281,12 +294,17 @@ func GetExpenseAnalytics(ctx context.Context, req *mcp.CallToolRequest, input Ex
 		return textResult("No sales ledgers could be resolved from Tally's Sales Accounts group. Pass sales_ledger explicitly or check the chart of accounts."), nil, nil
 	}
 
+	var missingExpenses []string
 	expenseLedgers := input.ExpenseLedgers
 	if len(expenseLedgers) > 0 {
 		for i, exp := range expenseLedgers {
 			resolved, err := resolveLedgerName(ctx, exp)
 			if err == nil {
 				expenseLedgers[i] = resolved
+			}
+			exists, _ := ledgerExists(ctx, expenseLedgers[i])
+			if !exists {
+				missingExpenses = append(missingExpenses, expenseLedgers[i])
 			}
 		}
 	} else {
@@ -396,6 +414,12 @@ func GetExpenseAnalytics(ctx context.Context, req *mcp.CallToolRequest, input Ex
 	sb.WriteString(fmt.Sprintf("*Expense ledgers: %s*\n\n", strings.Join(expenseLedgers, ", ")))
 	if input.StartDate != "" || input.EndDate != "" {
 		sb.WriteString(fmt.Sprintf("*Date range: %s to %s*\n\n", input.StartDate, input.EndDate))
+	}
+	if salesLedgerMissing {
+		sb.WriteString(fmt.Sprintf("> [!WARNING]\n> Sales ledger '%s' was not found in Tally's chart of accounts.\n\n", input.SalesLedger))
+	}
+	if len(missingExpenses) > 0 {
+		sb.WriteString(fmt.Sprintf("> [!WARNING]\n> Expense ledger(s) not found in Tally: %s. Check ledger names before using this as a zero-expense result.\n\n", strings.Join(missingExpenses, ", ")))
 	}
 	if totalSalesTxCount == 0 {
 		sb.WriteString("> [!WARNING]\n> No matching sales vouchers were found for the specified sales ledgers. Check ledger names and date range before using this as a zero-sales result.\n\n")

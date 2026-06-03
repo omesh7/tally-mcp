@@ -29,9 +29,9 @@ TallyMCP is designed with a **local-first** security model. Your accounting data
 │                  │    stdout: responses          │                      │
 └──────────────────┘    stderr: log messages      └──────────┬───────────┘
                                                              │
-                                                  HTTP POST (UTF-16LE XML)
-                                                  port 9000, Connection: close
-                                                  Mutex-serialized requests
+                                                   HTTP POST (UTF-16LE XML)
+                                                   port 9000, Connection: close
+                                                   Semaphore-serialized requests
                                                              │
                                                              ▼
                                                  ┌───────────────────────┐
@@ -100,7 +100,7 @@ TallyMCP exposes **13 core tools** for AI model consumption:
 ## 🛡️ Security Model
 * **Local-Only Communication**: The server only listens and talks on localhost. There is no remote dashboard, database, or telemetry.
 * **Input Validation**: All parameters are strongly typed and validated before sending queries. Ledger names, narration strings, and filters are fully XML-escaped (`xmlEscape`) to prevent XML injection.
-* **Mutex Serializer**: Tally's HTTP port 9000 is single-threaded. TallyMCP uses a sync Mutex to serialize requests, protecting your Tally instance from concurrent request freezes.
+* **Semaphore Serializer**: Tally's HTTP port 9000 is single-threaded. TallyMCP uses a channel-based semaphore to serialize requests. This ensures that lock acquisition is context-aware, preventing the server from hanging indefinitely if a single request blocks.
 * **Disable Keep-Alives**: Explicitly closes TCP sockets after each request to prevent port exhaustion on Windows machines.
 
 ---

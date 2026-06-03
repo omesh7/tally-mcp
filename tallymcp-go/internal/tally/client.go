@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"golang.org/x/text/encoding/unicode"
@@ -25,7 +24,7 @@ import (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
-	mu         sync.Mutex // Serializes requests to Tally's single-threaded XML server
+	sem        chan struct{} // Serializes requests to Tally's single-threaded XML server
 }
 
 // NewClient creates a TallyPrime HTTP client.
@@ -35,6 +34,8 @@ type Client struct {
 //   - port: Tally server port (typically 9000)
 //   - timeout: HTTP request timeout
 func NewClient(host string, port int, timeout time.Duration) *Client {
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{}
 	return &Client{
 		baseURL: fmt.Sprintf("http://%s:%d/", host, port),
 		httpClient: &http.Client{
@@ -45,6 +46,7 @@ func NewClient(host string, port int, timeout time.Duration) *Client {
 				DisableKeepAlives: true,
 			},
 		},
+		sem: sem,
 	}
 }
 
@@ -56,8 +58,15 @@ func NewClient(host string, port int, timeout time.Duration) *Client {
 // Requests are serialized via mutex to prevent overloading Tally's single-threaded server.
 func (c *Client) PostXML(ctx context.Context, xmlPayload string) (string, error) {
 	// Serialize: Tally port 9000 is single-threaded
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	select {
+	case <-c.sem:
+		// Acquired
+	case <-ctx.Done():
+		return "", fmt.Errorf("failed to acquire Tally lock: %w", ctx.Err())
+	}
+	defer func() {
+		c.sem <- struct{}{}
+	}()
 
 	// Create per-request encoder: golang.org/x/text transformers are stateful;
 	// sharing a global instance across calls risks encoding corruption.

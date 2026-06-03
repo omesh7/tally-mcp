@@ -51,7 +51,8 @@ func TestAddQuickJournalVoucherRejectsUnsafeAmountBeforePosting(t *testing.T) {
 }
 
 func TestJournalVoucherDateRejectsInvalidDay(t *testing.T) {
-	_, _, err := journalVoucherDate(JournalVoucherInput{Day: 3})
+	three := 3
+	_, _, err := journalVoucherDate(JournalVoucherInput{Day: &three})
 	if err == nil {
 		t.Fatal("expected invalid day error")
 	}
@@ -60,8 +61,20 @@ func TestJournalVoucherDateRejectsInvalidDay(t *testing.T) {
 	}
 }
 
+func TestJournalVoucherDateRejectsZeroDay(t *testing.T) {
+	zero := 0
+	_, _, err := journalVoucherDate(JournalVoucherInput{Day: &zero})
+	if err == nil {
+		t.Fatal("expected invalid day error for day=0")
+	}
+	if !strings.Contains(err.Error(), "day must be 1 or 2") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestJournalVoucherDateAcceptsExplicitDate(t *testing.T) {
-	date, display, err := journalVoucherDate(JournalVoucherInput{Date: "2026-06-03", Day: 3})
+	three := 3
+	date, display, err := journalVoucherDate(JournalVoucherInput{Date: "2026-06-03", Day: &three})
 	if err != nil {
 		t.Fatalf("unexpected date error: %v", err)
 	}

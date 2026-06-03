@@ -161,8 +161,13 @@ func dateRangeStaticVars(startDate, endDate string) (map[string]string, error) {
 		if from > to {
 			return nil, fmt.Errorf("start_date must be on or before end_date")
 		}
-		staticVars["SVFROMDATE"] = from
-		staticVars["SVTODATE"] = to
+		tFrom, ok1 := parseTallyDate(from)
+		tTo, ok2 := parseTallyDate(to)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("failed to parse date range internally")
+		}
+		staticVars["SVFROMDATE"] = tFrom.Format("02-Jan-2006")
+		staticVars["SVTODATE"] = tTo.Format("02-Jan-2006")
 	}
 	return staticVars, nil
 }
@@ -192,6 +197,23 @@ func resolveLedgerName(ctx context.Context, name string) (string, error) {
 		}
 	}
 	return name, nil
+}
+
+func ledgerExists(ctx context.Context, name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, nil
+	}
+	ledgers, err := fetchLedgers(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, l := range ledgers {
+		if strings.EqualFold(l.Name, name) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func resolveStockItemName(ctx context.Context, name string) (string, error) {

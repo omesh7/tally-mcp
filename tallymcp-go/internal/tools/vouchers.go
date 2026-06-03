@@ -15,13 +15,14 @@ import (
 const maxJournalVoucherAmount = 10000000.0
 
 // JournalVoucherInput is the input schema for add_quick_journal_voucher.
+// JournalVoucherInput is the input schema for add_quick_journal_voucher.
 type JournalVoucherInput struct {
 	DebitLedger  string  `json:"debit_ledger" jsonschema:"The ledger to debit"`
 	CreditLedger string  `json:"credit_ledger" jsonschema:"The ledger to credit"`
 	Amount       float64 `json:"amount" jsonschema:"The transaction amount in Rupees"`
 	Narration    string  `json:"narration,omitempty" jsonschema:"Brief description / narration of the transaction"`
 	Date         string  `json:"date,omitempty" jsonschema:"Optional voucher date in YYYY-MM-DD format. If omitted, day is used for Educational Mode compatibility."`
-	Day          int     `json:"day,omitempty" jsonschema:"Day of the month: 1 or 2 when date is omitted. Defaults to 1"`
+	Day          *int    `json:"day,omitempty" jsonschema:"Day of the month: 1 or 2 when date is omitted. Defaults to 1"`
 }
 
 // AddQuickJournalVoucher records a balanced Journal voucher between two ledgers.
@@ -57,6 +58,13 @@ func AddQuickJournalVoucher(ctx context.Context, req *mcp.CallToolRequest, input
 	narr := strings.TrimSpace(input.Narration)
 	if narr == "" {
 		narr = fmt.Sprintf("MCP journal voucher posted on %s.", dateDisp)
+	}
+
+	// Preflight ping to ensure Tally is alive and responsive
+	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := tallyClient.Ping(pingCtx); err != nil {
+		return textResult(fmt.Sprintf("**Voucher Posting Failed.**\n- Error: Tally Prime is not responding. Please make sure Tally is running on port 9000, the XML server is enabled, and the correct company is open in Tally. (Detail: %v)", err)), nil, nil
 	}
 
 	voucherXML := tallyxml.NewJournalVoucher(dateStr).
@@ -118,12 +126,12 @@ func journalVoucherDate(input JournalVoucherInput) (string, string, error) {
 		return clean, input.Date, nil
 	}
 
-	day := input.Day
-	if day == 0 {
-		day = 1
-	}
-	if day != 1 && day != 2 {
-		return "", "", fmt.Errorf("day must be 1 or 2 when date is omitted. Pass date for a specific voucher date")
+	day := 1
+	if input.Day != nil {
+		day = *input.Day
+		if day <= 0 || (day != 1 && day != 2) {
+			return "", "", fmt.Errorf("day must be 1 or 2 when date is omitted. Pass date for a specific voucher date")
+		}
 	}
 	// Use current fiscal year dynamically: Indian fiscal year starts April.
 	// Educational Mode only allows 1st or 2nd of any month.

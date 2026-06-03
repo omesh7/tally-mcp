@@ -46,6 +46,8 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 
 	var debits, credits []entry
 	var totalDr, totalCr float64
+	var pnlBal float64
+	var pnlType string
 
 	for _, row := range root.FindAll("ROW") {
 		name := row.FindText("Name")
@@ -58,6 +60,8 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 		}
 
 		if strings.EqualFold(name, "Profit & Loss A/c") || strings.EqualFold(name, "Profit and Loss A/c") {
+			pnlBal = bal
+			pnlType = btype
 			continue
 		}
 
@@ -82,6 +86,13 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 		sb.WriteString(fmt.Sprintf("| %s | *%s* | | %s |\n", e.name, e.parent, formatCurrency(e.balance)))
 	}
 	sb.WriteString(fmt.Sprintf("| **TOTAL** | | **%s** | **%s** |\n\n", formatCurrency(totalDr), formatCurrency(totalCr)))
+	if pnlBal > 0 {
+		label := "Profit"
+		if pnlType == "Dr" || pnlType == "Debit" {
+			label = "Loss"
+		}
+		sb.WriteString(fmt.Sprintf("**Net Profit / (Loss):** Rs %s (%s)\n\n", formatCurrency(pnlBal), label))
+	}
 	sb.WriteString("> [!NOTE]\n> Zero-balance ledgers are excluded from the Trial Balance.\n")
 
 	return textResult(sb.String()), nil, nil
@@ -129,8 +140,12 @@ func GetLedgerClosingBalance(ctx context.Context, req *mcp.CallToolRequest, inpu
 		if err != nil {
 			return textResult(fmt.Sprintf("❌ **Error:** %v", err)), nil, nil
 		}
-		staticVars["SVFROMDATE"] = "19000101"
-		staticVars["SVTODATE"] = clean
+		tTo, ok := parseTallyDate(clean)
+		if !ok {
+			return textResult("❌ **Error:** failed to parse target date internally"), nil, nil
+		}
+		staticVars["SVFROMDATE"] = "01-Jan-1900"
+		staticVars["SVTODATE"] = tTo.Format("02-Jan-2006")
 	}
 
 	xml := buildStandardExportQuery(tdl, staticVars)

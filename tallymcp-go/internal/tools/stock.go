@@ -49,7 +49,7 @@ func ListStockItems(ctx context.Context, req *mcp.CallToolRequest, input StockIt
 		parent := row.FindText("Parent")
 
 		// Filter by prefix if specified (case-insensitive)
-		if input.Prefix != "" && !strings.HasPrefix(strings.ToLower(name), strings.ToLower(input.Prefix)) {
+		if input.Prefix != "" && !strings.HasPrefix(strings.ToUpper(name), strings.ToUpper(input.Prefix)) {
 			continue
 		}
 
