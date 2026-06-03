@@ -6,51 +6,65 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	tallyxml "github.com/omesh7/tally-mcp/internal/xml"
 )
 
+const maxJournalVoucherAmount = 10000000.0
+
 // JournalVoucherInput is the input schema for add_quick_journal_voucher.
 type JournalVoucherInput struct {
-	DebitLedger  string  `json:"debit_ledger" jsonschema:"The ledger to debit (e.g. Factory Rent or Dyeing Charges)"`
-	CreditLedger string  `json:"credit_ledger" jsonschema:"The ledger to credit (e.g. HDFC Current Account)"`
+	DebitLedger  string  `json:"debit_ledger" jsonschema:"The ledger to debit"`
+	CreditLedger string  `json:"credit_ledger" jsonschema:"The ledger to credit"`
 	Amount       float64 `json:"amount" jsonschema:"The transaction amount in Rupees"`
 	Narration    string  `json:"narration,omitempty" jsonschema:"Brief description / narration of the transaction"`
-	Day          int     `json:"day,omitempty" jsonschema:"Day of the month: 1 or 2 (Educational mode limit). Defaults to 1"`
+	Date         string  `json:"date,omitempty" jsonschema:"Optional voucher date in YYYY-MM-DD format. If omitted, day is used for Educational Mode compatibility."`
+	Day          int     `json:"day,omitempty" jsonschema:"Day of the month: 1 or 2 when date is omitted. Defaults to 1"`
 }
 
-// AddQuickJournalVoucher safely records a balanced Journal voucher between two ledgers
-// on an Educational Mode safe date (1st or 2nd of April 2026).
+// AddQuickJournalVoucher records a balanced Journal voucher between two ledgers.
 func AddQuickJournalVoucher(ctx context.Context, req *mcp.CallToolRequest, input JournalVoucherInput) (*mcp.CallToolResult, any, error) {
+	input.DebitLedger = strings.TrimSpace(input.DebitLedger)
+	input.CreditLedger = strings.TrimSpace(input.CreditLedger)
+
 	if input.DebitLedger == "" || input.CreditLedger == "" {
-		return textResult("❌ **Voucher Posting Failed.**\n- Error: Both debit_ledger and credit_ledger are required fields."), nil, nil
+		return textResult("**Voucher Posting Failed.**\n- Error: Both debit_ledger and credit_ledger are required fields."), nil, nil
+	}
+
+	if resolved, err := resolveLedgerName(ctx, input.DebitLedger); err == nil {
+		input.DebitLedger = resolved
+	}
+	if resolved, err := resolveLedgerName(ctx, input.CreditLedger); err == nil {
+		input.CreditLedger = resolved
+	}
+	if sameName(input.DebitLedger, input.CreditLedger) {
+		return textResult("**Voucher Posting Failed.**\n- Error: debit_ledger and credit_ledger must be different ledgers."), nil, nil
 	}
 	if input.Amount <= 0 {
-		return textResult("❌ **Voucher Posting Failed.**\n- Error: Transaction amount must be greater than zero."), nil, nil
+		return textResult("**Voucher Posting Failed.**\n- Error: Transaction amount must be greater than zero."), nil, nil
+	}
+	if input.Amount > maxJournalVoucherAmount {
+		return textResult(fmt.Sprintf("**Voucher Posting Failed.**\n- Error: Transaction amount exceeds the MCP safety limit of Rs %s.", formatCurrency(maxJournalVoucherAmount))), nil, nil
 	}
 
-	// Enforce Educational Mode date restriction
-	day := input.Day
-	if day != 1 && day != 2 {
-		day = 1
+	dateStr, dateDisp, err := journalVoucherDate(input)
+	if err != nil {
+		return textResult(fmt.Sprintf("**Voucher Posting Failed.**\n- Error: %v", err)), nil, nil
 	}
-	dateStr := fmt.Sprintf("2026040%d", day)
-	dateDisp := fmt.Sprintf("0%d-Apr-2026", day)
 
-	narr := input.Narration
+	narr := strings.TrimSpace(input.Narration)
 	if narr == "" {
-		narr = fmt.Sprintf("Demo Custom MCP transaction posting on %s.", dateDisp)
+		narr = fmt.Sprintf("MCP journal voucher posted on %s.", dateDisp)
 	}
 
-	// Build voucher XML using the fluent builder
 	voucherXML := tallyxml.NewJournalVoucher(dateStr).
 		Debit(input.DebitLedger, input.Amount).
 		Credit(input.CreditLedger, input.Amount).
 		Narration(narr).
 		Build()
 
-	// Wrap in import envelope
 	importXML := tallyxml.NewImportEnvelope("All Masters").
 		WithData(voucherXML).
 		Build()
@@ -62,52 +76,109 @@ func AddQuickJournalVoucher(ctx context.Context, req *mcp.CallToolRequest, input
 
 	created := root.FindTextDeep("CREATED")
 	errors := root.FindTextDeep("ERRORS")
+	lineError := root.FindTextDeep("LINEERROR")
+	exceptions := root.FindTextDeep("EXCEPTIONS")
+	cancelled := root.FindTextDeep("CANCELLED")
 
 	createdCount, _ := strconv.Atoi(created)
 	if createdCount > 0 {
 		return textResult(fmt.Sprintf(
-			"🎉 **Voucher Posted Successfully!**\n- **Type:** Journal\n- **Date:** %s\n- **Debit:** %s (Rs %s)\n- **Credit:** %s (Rs %s)\n- **Narration:** *%s*",
+			"**Voucher Posted Successfully.**\n- **Type:** Journal\n- **Date:** %s\n- **Debit:** %s (Rs %s)\n- **Credit:** %s (Rs %s)\n- **Narration:** *%s*",
 			dateDisp, input.DebitLedger, formatCurrency(input.Amount),
 			input.CreditLedger, formatCurrency(input.Amount), narr,
 		)), nil, nil
 	}
 
-	return textResult(fmt.Sprintf(
-		"❌ **Voucher Posting Failed.**\n- Errors detected by Tally XML: %s",
-		errors,
-	)), nil, nil
+	var details []string
+	if lineError != "" {
+		details = append(details, "Tally line error: "+lineError)
+	}
+	if exceptions != "" && exceptions != "0" {
+		details = append(details, "Exceptions: "+exceptions)
+	}
+	if errors != "" && errors != "0" {
+		details = append(details, "Errors: "+errors)
+	}
+	if cancelled != "" && cancelled != "0" {
+		details = append(details, "Cancelled: "+cancelled)
+	}
+	if len(details) == 0 {
+		details = append(details, fmt.Sprintf("Tally did not create the voucher. CREATED=%s, ERRORS=%s.", created, errors))
+	}
+
+	return textResult("**Voucher Posting Failed.**\n- " + strings.Join(details, "\n- ")), nil, nil
+}
+
+func journalVoucherDate(input JournalVoucherInput) (string, string, error) {
+	if strings.TrimSpace(input.Date) != "" {
+		clean, err := cleanDateYYYYMMDD(input.Date)
+		if err != nil {
+			return "", "", err
+		}
+		return clean, input.Date, nil
+	}
+
+	day := input.Day
+	if day == 0 {
+		day = 1
+	}
+	if day != 1 && day != 2 {
+		return "", "", fmt.Errorf("day must be 1 or 2 when date is omitted. Pass date for a specific voucher date")
+	}
+	// Use current fiscal year dynamically: Indian fiscal year starts April.
+	// Educational Mode only allows 1st or 2nd of any month.
+	now := time.Now()
+	fiscalYear := now.Year()
+	if now.Month() < time.April {
+		fiscalYear-- // Jan-Mar belongs to previous fiscal year
+	}
+	dateStr := fmt.Sprintf("%d04%02d", fiscalYear, day)
+	dateDisp := fmt.Sprintf("%02d-Apr-%d", day, fiscalYear)
+	return dateStr, dateDisp, nil
 }
 
 // DayBookInput is the input schema for get_day_book.
 type DayBookInput struct {
-	Date string `json:"date,omitempty" jsonschema:"Optional date in YYYY-MM-DD format to retrieve vouchers for. If omitted, retrieves active period vouchers."`
+	Date      string `json:"date,omitempty" jsonschema:"Optional single date in YYYY-MM-DD format to retrieve vouchers for."`
+	StartDate string `json:"start_date,omitempty" jsonschema:"Optional start date in YYYY-MM-DD format."`
+	EndDate   string `json:"end_date,omitempty" jsonschema:"Optional end date in YYYY-MM-DD format."`
 }
 
-// GetDayBook lists all recorded vouchers in Tally Prime, optionally filtered by date.
+// GetDayBook lists recorded vouchers in Tally Prime, optionally filtered by date or date range.
 func GetDayBook(ctx context.Context, req *mcp.CallToolRequest, input DayBookInput) (*mcp.CallToolResult, any, error) {
+	startDate := input.StartDate
+	endDate := input.EndDate
+	if input.Date != "" {
+		startDate = input.Date
+		endDate = input.Date
+	}
+
+	staticVars, err := dateRangeStaticVars(startDate, endDate)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error reading Day Book: %v", err)), nil, nil
+	}
+
 	tdl := tallyxml.NewTDL().
 		Report("R", "F").
 		Form("F", "DATA", "P").
 		Part("P", "L", "Col").
-		Line("L", "ROW", "FN", "FD", "FT", "FA", "F_NARR").
+		Line("L", "ROW", "FM", "FN", "FD", "FT", "FA", "F_NARR").
+		Field("FM", "MasterID", "$MasterID").
 		Field("FN", "VchNo", tallyxml.FormulaVoucherNumber).
 		Field("FD", "Date", tallyxml.FormulaDate).
 		Field("FT", "Type", "$VoucherTypeName").
 		Field("FA", "Amount", "$$NumValue:$AllLedgerEntries[1].Amount").
-		Field("F_NARR", "Narration", "$Narration").
-		CollectionWithFetch("Col", tallyxml.CollectionVoucher, "AllLedgerEntries")
+		Field("F_NARR", "Narration", "$Narration")
 
-	// Build static vars for date filter if provided
-	staticVars := map[string]string{
-		"SVCurrentCompany": "##SVCurrentCompany",
-		"SVTargetCompany":  "##SVCurrentCompany",
-	}
-	if input.Date != "" {
-		clean := strings.ReplaceAll(input.Date, "-", "")
-		if len(clean) == 8 {
-			staticVars["SVFROMDATE"] = clean
-			staticVars["SVTODATE"] = clean
-		}
+	// When date range provided, filter using Tally's IsBetween TDL function.
+	// The SVFROMDATE/SVTODATE static vars scope is honored inside the filter.
+	// Without a filter, Tally returns all vouchers regardless of static vars
+	// in Educational Mode.
+	if startDate != "" || endDate != "" {
+		tdl.CollectionWithFilterAndFetch("Col", tallyxml.CollectionVoucher, "DateFilter", "AllLedgerEntries").
+			Filter("DateFilter", `($Date >= ##SVFROMDATE) and ($Date <= ##SVTODATE)`)
+	} else {
+		tdl.CollectionWithFetch("Col", tallyxml.CollectionVoucher, "AllLedgerEntries")
 	}
 
 	xml := buildStandardExportQuery(tdl, staticVars)
@@ -119,29 +190,49 @@ func GetDayBook(ctx context.Context, req *mcp.CallToolRequest, input DayBookInpu
 
 	var sb strings.Builder
 	dateHeader := ""
-	if input.Date != "" {
-		dateHeader = fmt.Sprintf(" for %s", input.Date)
+	if startDate != "" || endDate != "" {
+		dateHeader = fmt.Sprintf(" for %s to %s", startDate, endDate)
 	}
 	sb.WriteString(fmt.Sprintf("### Day Book%s:\n\n", dateHeader))
 	sb.WriteString("| Date | Voucher No | Type | Amount (Rs) | Narration |\n")
 	sb.WriteString("| :--- | :--- | :--- | :---: | :--- |\n")
 
+	from, _ := cleanDateYYYYMMDD(startDate)
+	to, _ := cleanDateYYYYMMDD(endDate)
+
 	rows := root.FindAll("ROW")
 	count := 0
+	seen := make(map[string]bool)
 	for _, row := range rows {
-		vchNo := row.FindText("VchNo")
 		date := row.FindText("Date")
+		if !isInDateRange(date, from, to) {
+			continue
+		}
+
+		masterID := row.FindText("MasterID")
+		vchNo := row.FindText("VchNo")
 		vchType := row.FindText("Type")
 		amt := math.Abs(parseFloat(row.FindText("Amount")))
-		narr := row.FindText("Narration")
+		narr := strings.TrimSpace(row.FindText("Narration"))
 
 		if date == "" && vchType == "" && amt == 0 {
 			continue
 		}
-
 		if vchNo == "" {
 			vchNo = "(Auto)"
 		}
+		if narr == "" || narr == "**" {
+			narr = "no narration"
+		}
+
+		key := masterID
+		if key == "" || key == "0" {
+			key = strings.Join([]string{date, vchNo, vchType, fmt.Sprintf("%.2f", amt), narr}, "|")
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 
 		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | *%s* |\n",
 			date, vchNo, vchType, formatCurrency(amt), narr))

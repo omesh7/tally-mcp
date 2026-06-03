@@ -52,6 +52,7 @@ func (t *TDL) Line(name, xmlTag string, fieldNames ...string) *TDL {
 
 // Field adds a FIELD definition: <FIELD NAME="name"><SET>formula</SET><XMLTAG>tag</XMLTAG></FIELD>
 func (t *TDL) Field(name, xmlTag, formula string) *TDL {
+	formula = escapeTDLFormula(formula)
 	t.parts = append(t.parts, fmt.Sprintf(
 		`<FIELD NAME="%s"><SET>%s</SET><XMLTAG>%s</XMLTAG></FIELD>`, name, formula, xmlTag))
 	return t
@@ -80,8 +81,17 @@ func (t *TDL) CollectionWithFetch(name, collType, fetchField string) *TDL {
 	return t
 }
 
+// CollectionWithFilterAndFetch adds a COLLECTION with both FILTER and FETCH clauses.
+func (t *TDL) CollectionWithFilterAndFetch(name, collType, filterName, fetchField string) *TDL {
+	t.parts = append(t.parts, fmt.Sprintf(
+		`<COLLECTION NAME="%s"><TYPE>%s</TYPE><FILTER>%s</FILTER><FETCH>%s</FETCH></COLLECTION>`,
+		name, collType, filterName, fetchField))
+	return t
+}
+
 // Filter adds a SYSTEM filter formula: <SYSTEM TYPE="Formula" NAME="name">formula</SYSTEM>
 func (t *TDL) Filter(name, formula string) *TDL {
+	formula = escapeTDLFormula(formula)
 	t.parts = append(t.parts, fmt.Sprintf(
 		`<SYSTEM TYPE="Formula" NAME="%s">%s</SYSTEM>`, name, formula))
 	return t
@@ -89,6 +99,7 @@ func (t *TDL) Filter(name, formula string) *TDL {
 
 // FilterFormulae adds a SYSTEM filter with TYPE="Formulae" (plural — required for some Tally queries).
 func (t *TDL) FilterFormulae(name, formula string) *TDL {
+	formula = escapeTDLFormula(formula)
 	t.parts = append(t.parts, fmt.Sprintf(
 		`<SYSTEM TYPE="Formulae" NAME="%s">%s</SYSTEM>`, name, formula))
 	return t
@@ -103,4 +114,10 @@ func (t *TDL) Build() string {
 	}
 	sb.WriteString("</TDLMESSAGE></TDL>")
 	return sb.String()
+}
+
+func escapeTDLFormula(formula string) string {
+	formula = strings.ReplaceAll(formula, "<", "&lt;")
+	formula = strings.ReplaceAll(formula, ">", "&gt;")
+	return formula
 }

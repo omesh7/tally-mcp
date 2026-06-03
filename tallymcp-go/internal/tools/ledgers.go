@@ -57,6 +57,10 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 			continue
 		}
 
+		if strings.EqualFold(name, "Profit & Loss A/c") || strings.EqualFold(name, "Profit and Loss A/c") {
+			continue
+		}
+
 		if btype == "Dr" {
 			debits = append(debits, entry{name, parent, bal})
 			totalDr += bal
@@ -77,7 +81,8 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 	for _, e := range credits {
 		sb.WriteString(fmt.Sprintf("| %s | *%s* | | %s |\n", e.name, e.parent, formatCurrency(e.balance)))
 	}
-	sb.WriteString(fmt.Sprintf("| **TOTAL** | | **%s** | **%s** |\n", formatCurrency(totalDr), formatCurrency(totalCr)))
+	sb.WriteString(fmt.Sprintf("| **TOTAL** | | **%s** | **%s** |\n\n", formatCurrency(totalDr), formatCurrency(totalCr)))
+	sb.WriteString("> [!NOTE]\n> Zero-balance ledgers are excluded from the Trial Balance.\n")
 
 	return textResult(sb.String()), nil, nil
 }
@@ -88,7 +93,7 @@ func GetTrialBalance(ctx context.Context, req *mcp.CallToolRequest, input TrialB
 
 // LedgerBalanceInput is the input schema for get_ledger_closing_balance.
 type LedgerBalanceInput struct {
-	LedgerName string `json:"ledger_name" jsonschema:"The exact name of the ledger (e.g. HDFC Current Account)"`
+	LedgerName string `json:"ledger_name" jsonschema:"The exact name of the ledger"`
 	Date       string `json:"date,omitempty" jsonschema:"Optional date in YYYY-MM-DD format to retrieve balance as of that date"`
 }
 
@@ -96,6 +101,11 @@ type LedgerBalanceInput struct {
 func GetLedgerClosingBalance(ctx context.Context, req *mcp.CallToolRequest, input LedgerBalanceInput) (*mcp.CallToolResult, any, error) {
 	if input.LedgerName == "" {
 		return textResult("❌ **Error:** ledger_name is a required parameter."), nil, nil
+	}
+
+	resolved, err := resolveLedgerName(ctx, input.LedgerName)
+	if err == nil {
+		input.LedgerName = resolved
 	}
 
 	tdl := tallyxml.NewTDL().
@@ -115,12 +125,12 @@ func GetLedgerClosingBalance(ctx context.Context, req *mcp.CallToolRequest, inpu
 		"SVTargetCompany":  "##SVCurrentCompany",
 	}
 	if input.Date != "" {
-		clean := strings.ReplaceAll(input.Date, "-", "")
-		if len(clean) == 8 {
-			staticVars["SVTOYEAR"] = clean[:4]
-			staticVars["SVTOMONTH"] = clean[4:6]
-			staticVars["SVTODAY"] = clean[6:8]
+		clean, err := cleanDateYYYYMMDD(input.Date)
+		if err != nil {
+			return textResult(fmt.Sprintf("❌ **Error:** %v", err)), nil, nil
 		}
+		staticVars["SVFROMDATE"] = "19000101"
+		staticVars["SVTODATE"] = clean
 	}
 
 	xml := buildStandardExportQuery(tdl, staticVars)
@@ -341,43 +351,62 @@ func GetOutstandingReceivables(ctx context.Context, req *mcp.CallToolRequest, in
 	}
 
 	var debtors []debtorItem
+	var creditDebtors []debtorItem
 	for _, l := range ledgers {
 		if belongsToGroup(l.Parent, "Sundry Debtors", parentMap) {
 			if l.ClosingBalance > 0 {
-				debtors = append(debtors, debtorItem{
+				item := debtorItem{
 					Name:    l.Name,
 					Group:   l.Parent,
 					Balance: l.ClosingBalance,
 					Type:    l.ClosingType,
-				})
+				}
+				if l.ClosingType == "Dr" {
+					debtors = append(debtors, item)
+				} else {
+					creditDebtors = append(creditDebtors, item)
+				}
 			}
 		}
 	}
 
-	if len(debtors) == 0 {
-		return textResult("### Outstanding Receivables (Debtors)\n\nNo outstanding receivables found (all debtor ledgers have a zero balance)."), nil, nil
+	if len(debtors) == 0 && len(creditDebtors) == 0 {
+		return textResult("### Outstanding Receivables (Sundry Debtors)\n\nNo outstanding receivables or customer credit balances found."), nil, nil
 	}
 
 	// Sort descending by balance
 	sort.Slice(debtors, func(i, j int) bool {
 		return debtors[i].Balance > debtors[j].Balance
 	})
+	sort.Slice(creditDebtors, func(i, j int) bool {
+		return creditDebtors[i].Balance > creditDebtors[j].Balance
+	})
 
 	var sb strings.Builder
 	sb.WriteString("### Outstanding Receivables (Sundry Debtors)\n\n")
-	sb.WriteString("| Customer Ledger Name | Group / Parent | Outstanding Balance (Rs) | Type |\n")
-	sb.WriteString("| :--- | :--- | :---: | :---: |\n")
 
-	var total float64
-	for _, d := range debtors {
-		sb.WriteString(fmt.Sprintf("| %s | *%s* | %s | %s |\n", d.Name, d.Group, formatCurrency(d.Balance), d.Type))
-		if d.Type == "Dr" {
+	if len(debtors) > 0 {
+		sb.WriteString("| Customer Ledger Name | Group / Parent | Outstanding Balance (Rs) | Type |\n")
+		sb.WriteString("| :--- | :--- | :---: | :---: |\n")
+
+		var total float64
+		for _, d := range debtors {
+			sb.WriteString(fmt.Sprintf("| %s | *%s* | %s | %s |\n", d.Name, d.Group, formatCurrency(d.Balance), d.Type))
 			total += d.Balance
-		} else {
-			total -= d.Balance // Advance payment reduces outstanding total
+		}
+		sb.WriteString(fmt.Sprintf("| **TOTAL OUTSTANDING** | | **%s** | **Dr** |\n\n", formatCurrency(total)))
+	} else {
+		sb.WriteString("No active debit outstanding balances found.\n\n")
+	}
+
+	if len(creditDebtors) > 0 {
+		sb.WriteString("### Credit Balances in Debtors (Customer Credits / Prepayments)\n\n")
+		sb.WriteString("| Customer Ledger Name | Group / Parent | Credit Balance (Rs) |\n")
+		sb.WriteString("| :--- | :--- | :---: |\n")
+		for _, cd := range creditDebtors {
+			sb.WriteString(fmt.Sprintf("| %s | *%s* | %s |\n", cd.Name, cd.Group, formatCurrency(cd.Balance)))
 		}
 	}
-	sb.WriteString(fmt.Sprintf("| **TOTAL OUTSTANDING** | | **%s** | **Dr** |\n", formatCurrency(math.Abs(total))))
 
 	return textResult(sb.String()), nil, nil
 }
@@ -409,43 +438,62 @@ func GetOutstandingPayables(ctx context.Context, req *mcp.CallToolRequest, input
 	}
 
 	var creditors []creditorItem
+	var debitCreditors []creditorItem
 	for _, l := range ledgers {
 		if belongsToGroup(l.Parent, "Sundry Creditors", parentMap) {
 			if l.ClosingBalance > 0 {
-				creditors = append(creditors, creditorItem{
+				item := creditorItem{
 					Name:    l.Name,
 					Group:   l.Parent,
 					Balance: l.ClosingBalance,
 					Type:    l.ClosingType,
-				})
+				}
+				if l.ClosingType == "Cr" {
+					creditors = append(creditors, item)
+				} else {
+					debitCreditors = append(debitCreditors, item)
+				}
 			}
 		}
 	}
 
-	if len(creditors) == 0 {
-		return textResult("### Outstanding Payables (Creditors)\n\nNo outstanding payables found (all creditor ledgers have a zero balance)."), nil, nil
+	if len(creditors) == 0 && len(debitCreditors) == 0 {
+		return textResult("### Outstanding Payables (Sundry Creditors)\n\nNo outstanding payables or vendor debit balances found."), nil, nil
 	}
 
 	// Sort descending by balance
 	sort.Slice(creditors, func(i, j int) bool {
 		return creditors[i].Balance > creditors[j].Balance
 	})
+	sort.Slice(debitCreditors, func(i, j int) bool {
+		return debitCreditors[i].Balance > debitCreditors[j].Balance
+	})
 
 	var sb strings.Builder
 	sb.WriteString("### Outstanding Payables (Sundry Creditors)\n\n")
-	sb.WriteString("| Vendor Ledger Name | Group / Parent | Outstanding Balance (Rs) | Type |\n")
-	sb.WriteString("| :--- | :--- | :---: | :---: |\n")
 
-	var total float64
-	for _, c := range creditors {
-		sb.WriteString(fmt.Sprintf("| %s | *%s* | %s | %s |\n", c.Name, c.Group, formatCurrency(c.Balance), c.Type))
-		if c.Type == "Cr" {
+	if len(creditors) > 0 {
+		sb.WriteString("| Vendor Ledger Name | Group / Parent | Outstanding Balance (Rs) | Type |\n")
+		sb.WriteString("| :--- | :--- | :---: | :---: |\n")
+
+		var total float64
+		for _, c := range creditors {
+			sb.WriteString(fmt.Sprintf("| %s | *%s* | %s | %s |\n", c.Name, c.Group, formatCurrency(c.Balance), c.Type))
 			total += c.Balance
-		} else {
-			total -= c.Balance // Advance payment to vendor reduces outstanding payables
+		}
+		sb.WriteString(fmt.Sprintf("| **TOTAL OUTSTANDING** | | **%s** | **Cr** |\n\n", formatCurrency(total)))
+	} else {
+		sb.WriteString("No active credit outstanding balances found.\n\n")
+	}
+
+	if len(debitCreditors) > 0 {
+		sb.WriteString("### Debit Balances in Creditors (Vendor Advances / Prepayments)\n\n")
+		sb.WriteString("| Vendor Ledger Name | Group / Parent | Debit Balance (Rs) |\n")
+		sb.WriteString("| :--- | :--- | :---: |\n")
+		for _, dc := range debitCreditors {
+			sb.WriteString(fmt.Sprintf("| %s | *%s* | %s |\n", dc.Name, dc.Group, formatCurrency(dc.Balance)))
 		}
 	}
-	sb.WriteString(fmt.Sprintf("| **TOTAL OUTSTANDING** | | **%s** | **Cr** |\n", formatCurrency(math.Abs(total))))
 
 	return textResult(sb.String()), nil, nil
 }
@@ -639,6 +687,18 @@ func GetProfitAndLoss(ctx context.Context, req *mcp.CallToolRequest, input Profi
 	if len(purchaseLedgers) > 0 {
 		sb.WriteString("**Purchase Accounts:**\n")
 		for _, l := range purchaseLedgers {
+			if l.ClosingBalance > 0 {
+				sb.WriteString(fmt.Sprintf("- %s: Rs %s (%s)\n", l.Name, formatCurrency(l.ClosingBalance), l.ClosingType))
+			}
+		}
+		sb.WriteString("\n")
+	}
+	if len(directExpenseLedgers) > 0 {
+		sb.WriteString("**Direct Expenses:**\n")
+		sort.Slice(directExpenseLedgers, func(i, j int) bool {
+			return directExpenseLedgers[i].ClosingBalance > directExpenseLedgers[j].ClosingBalance
+		})
+		for _, l := range directExpenseLedgers {
 			if l.ClosingBalance > 0 {
 				sb.WriteString(fmt.Sprintf("- %s: Rs %s (%s)\n", l.Name, formatCurrency(l.ClosingBalance), l.ClosingType))
 			}
@@ -841,6 +901,9 @@ func GetBalanceSheet(ctx context.Context, req *mcp.CallToolRequest, input Balanc
 		sb.WriteString("> [!NOTE]\n> **Balance Sheet status**: Balanced successfully.\n\n")
 	}
 
+	sb.WriteString("> [!NOTE]\n> **Zero-Balance Ledgers**: Zero-balance ledgers are excluded from the Balance Sheet.\n\n")
+	sb.WriteString("> [!NOTE]\n> **Fixed Assets**: Rs 0.00 (Capital equipment/assets like Laptops, Printers, etc., are currently tracked under stock inventory rather than Fixed Asset ledgers in Tally).\n\n")
+
 	sb.WriteString("### 2. Detailed Assets Breakdown\n\n")
 	if len(fixedAssetItems) > 0 {
 		sb.WriteString("**Fixed Assets:**\n")
@@ -874,4 +937,3 @@ func GetBalanceSheet(ctx context.Context, req *mcp.CallToolRequest, input Balanc
 
 	return textResult(sb.String()), nil, nil
 }
-

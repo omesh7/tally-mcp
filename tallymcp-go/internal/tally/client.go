@@ -48,11 +48,6 @@ func NewClient(host string, port int, timeout time.Duration) *Client {
 	}
 }
 
-// utf16LEEncoder returns a transformer that encodes UTF-8 to UTF-16LE with BOM.
-var utf16LEEncoder = unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
-
-// utf16LEDecoder returns a transformer that decodes UTF-16LE to UTF-8.
-var utf16LEDecoder = unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
 
 // PostXML sends an XML request to TallyPrime and returns the decoded XML response.
 //
@@ -64,8 +59,11 @@ func (c *Client) PostXML(ctx context.Context, xmlPayload string) (string, error)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Create per-request encoder: golang.org/x/text transformers are stateful;
+	// sharing a global instance across calls risks encoding corruption.
+	encoder := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
 	// Encode UTF-8 → UTF-16LE
-	encoded, _, err := transform.Bytes(utf16LEEncoder, []byte(xmlPayload))
+	encoded, _, err := transform.Bytes(encoder, []byte(xmlPayload))
 	if err != nil {
 		return "", fmt.Errorf("utf-16le encoding failed: %w", err)
 	}
@@ -92,8 +90,10 @@ func (c *Client) PostXML(ctx context.Context, xmlPayload string) (string, error)
 		return "", fmt.Errorf("failed to read tally response body: %w", err)
 	}
 
+	// Create per-request decoder: golang.org/x/text transformers are stateful.
+	decoder := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
 	// Decode UTF-16LE → UTF-8
-	decoded, _, err := transform.Bytes(utf16LEDecoder, rawBody)
+	decoded, _, err := transform.Bytes(decoder, rawBody)
 	if err != nil {
 		// Fallback: try treating as raw UTF-8 (some Tally versions mix encodings)
 		log.Printf("[TallyClient] UTF-16LE decode failed, falling back to raw bytes: %v", err)

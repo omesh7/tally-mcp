@@ -31,9 +31,19 @@ func RegisterAll(server *mcp.Server, client *tally.Client) {
 	}, GetLedgerClosingBalance)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_ledger_statement",
+		Description: "Lists voucher transactions for a ledger over an optional date range.",
+	}, GetLedgerStatement)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_stock_items",
-		Description: "Lists all inventory stock items populated in Tally Prime, with an optional prefix filter.",
+		Description: "Lists all inventory stock items populated in Tally Prime, with optional prefix and category/group filters (case-insensitive).",
 	}, ListStockItems)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_stock_movement",
+		Description: "Summarizes inward and outward movement for a stock item over an optional date range.",
+	}, GetStockMovement)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_ledgers",
@@ -78,7 +88,7 @@ func RegisterAll(server *mcp.Server, client *tally.Client) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_sales_analytics",
-		Description: "Performs month-on-month sales calculations and returns growth percentages for the active company.",
+		Description: "Performs month-on-month sales calculations and returns growth percentages for the active company. If sales_ledger is omitted, all ledgers under the Sales Accounts group are combined and analyzed.",
 	}, GetSalesAnalytics)
 
 	mcp.AddTool(server, &mcp.Tool{

@@ -12,10 +12,11 @@ import (
 
 // StockItemsInput is the input schema for list_stock_items.
 type StockItemsInput struct {
-	Prefix string `json:"prefix,omitempty" jsonschema:"Optional prefix to filter stock items by name (e.g. 'SC ')"`
+	Prefix   string `json:"prefix,omitempty" jsonschema:"Optional prefix to filter stock items by name (case-insensitive)"`
+	Category string `json:"category,omitempty" jsonschema:"Optional category/group name to filter stock items (case-insensitive)"`
 }
 
-// ListStockItems lists all stock items, with an optional name prefix filter.
+// ListStockItems lists all stock items, with optional prefix and category filters.
 func ListStockItems(ctx context.Context, req *mcp.CallToolRequest, input StockItemsInput) (*mcp.CallToolResult, any, error) {
 	tdl := tallyxml.NewTDL().
 		Report("R", "F").
@@ -45,13 +46,18 @@ func ListStockItems(ctx context.Context, req *mcp.CallToolRequest, input StockIt
 
 	for _, row := range root.FindAll("ROW") {
 		name := row.FindText("Name")
+		parent := row.FindText("Parent")
 
-		// Filter by prefix if specified
-		if input.Prefix != "" && !strings.HasPrefix(name, input.Prefix) {
+		// Filter by prefix if specified (case-insensitive)
+		if input.Prefix != "" && !strings.HasPrefix(strings.ToLower(name), strings.ToLower(input.Prefix)) {
 			continue
 		}
 
-		parent := row.FindText("Parent")
+		// Filter by category if specified (case-insensitive exact match)
+		if input.Category != "" && !strings.EqualFold(parent, input.Category) {
+			continue
+		}
+
 		unit := row.FindText("Unit")
 		qty := parseFloat(row.FindText("Qty"))
 		val := math.Abs(parseFloat(row.FindText("Val")))
