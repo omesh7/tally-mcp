@@ -64,7 +64,7 @@ Open your Claude Desktop configuration file (typically `%APPDATA%\Claude\claude_
 {
   "mcpServers": {
     "tally-mcp-server": {
-      "command": "D:/WORK-OMESH/AI/Projects/content-projects-resources/post-002-tally/tallymcp-go/tallymcp.exe"
+      "command": "C:/path/to/tallymcp-go/tallymcp.exe"
     }
   }
 }
