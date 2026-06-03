@@ -44,7 +44,7 @@ func main() {
 	// Register all tools
 	tools.RegisterAll(server, client)
 
-	log.Printf("7 MCP tools registered. Waiting for AI client connections on stdio...")
+	log.Printf("13 MCP tools registered. Waiting for AI client connections on stdio...")
 
 	var transport mcp.Transport = &mcp.StdioTransport{}
 	if cfg.LogLevel == "debug" {

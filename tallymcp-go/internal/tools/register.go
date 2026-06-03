@@ -45,6 +45,28 @@ func RegisterAll(server *mcp.Server, client *tally.Client) {
 		Description: "Retrieves a listing of all vouchers (transactions) recorded in Tally Prime for a date or date range.",
 	}, GetDayBook)
 
+	// ── Financial Reporting Tools ───────────────────────────────────────────
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_outstanding_receivables",
+		Description: "Lists all outstanding customer receivables (balances under Sundry Debtors) sorted descending by balance, helping you track outstanding invoice amounts.",
+	}, GetOutstandingReceivables)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_outstanding_payables",
+		Description: "Lists all outstanding vendor payables (balances under Sundry Creditors) sorted descending by balance, helping you track liabilities and due payments.",
+	}, GetOutstandingPayables)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_profit_and_loss",
+		Description: "Calculates the company's Gross Profit and Net Profit dynamically based on revenue, purchases, direct/indirect expenses, and opening/closing stock.",
+	}, GetProfitAndLoss)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_balance_sheet",
+		Description: "Fetches a structured Balance Sheet showing Capital & Liabilities vs. Assets, verifying if accounts balance successfully.",
+	}, GetBalanceSheet)
+
 	// ── Write Tools ─────────────────────────────────────────────────────────
 
 	mcp.AddTool(server, &mcp.Tool{

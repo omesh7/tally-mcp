@@ -77,7 +77,7 @@ Restart Claude Desktop, and you will see the Tally tools icon available in your 
 
 ## 🛠️ Tool Reference
 
-TallyMCP exposes **7 core tools** for AI model consumption:
+TallyMCP exposes **13 core tools** for AI model consumption:
 
 | # | Tool Name | Type | Description | Key Parameters |
 |---|-----------|------|-------------|----------------|
@@ -90,6 +90,10 @@ TallyMCP exposes **7 core tools** for AI model consumption:
 | 7 | `add_quick_journal_voucher` | Write | Records a balanced Journal voucher between two ledgers. (EDU Mode safe dates) | `debit_ledger`, `credit_ledger`, `amount`, `narration`, `day` |
 | 8 | `get_sales_analytics` | Read | Generates month-on-month sales aggregates and growth percentages for a sales ledger. | `sales_ledger` (optional) |
 | 9 | `get_expense_analytics` | Read | Compiles multi-period profitability and net margin trends using custom expenses/sales. | `sales_ledger` (optional), `expense_ledgers` (optional) |
+| 10 | `get_outstanding_receivables` | Read | Lists all outstanding customer receivables (Sundry Debtors) sorted descending by balance. | None |
+| 11 | `get_outstanding_payables` | Read | Lists all outstanding vendor payables (Sundry Creditors) sorted descending by balance. | None |
+| 12 | `get_profit_and_loss` | Read | Calculates Gross Profit and Net Profit dynamically based on revenue, expense, and stock. | None |
+| 13 | `get_balance_sheet` | Read | Fetches a structured Balance Sheet showing Capital & Liabilities vs. Assets. | None |
 
 ---
 
