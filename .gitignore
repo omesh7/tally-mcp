@@ -1,0 +1,23 @@
+# Binaries and executables
+*.exe
+*.exe~
+tallymcp-go/tallymcp.exe
+
+# Logs
+*.log
+tallymcp-go/out.log
+
+# Archived prototype and research docs
+python-mcp-v1-archive/
+RESEARCH_DOCS/
+
+# Local/IDE configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+CLAUDE.md
+TASKS.md
